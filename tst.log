@@ -1,0 +1,17 @@
+2017-11-02 11:04:37,040 - batch_all.py:41 - tst - frame_all: 197
+2017-11-02 11:04:57,370 - batch_all.py:41 - tst - frame_all: 201
+2017-11-02 11:05:22,006 - batch_all.py:41 - tst - frame_all: 284
+2017-11-02 11:06:13,736 - batch_all.py:41 - tst - frame_all: 382
+2017-11-02 11:07:47,994 - batch_all.py:48 - tst - contour_recall: 0.913194444444
+2017-11-02 11:07:47,994 - batch_all.py:49 - tst - contour_accuracy: 0.267212599662
+2017-11-02 11:07:47,994 - batch_all.py:50 - tst - frame_recall: 0.97886292167
+2017-11-02 11:07:47,994 - batch_all.py:51 - tst - frame_average: 0.378449436044
+2017-11-02 11:10:59,188 - batch_all.py:42 - tst - frame_all: 197
+2017-11-02 11:28:27,803 - batch_all.py:42 - tst - frame_all: 197
+2017-11-02 11:28:48,471 - batch_all.py:42 - tst - frame_all: 201
+2017-11-02 11:29:13,789 - batch_all.py:42 - tst - frame_all: 284
+2017-11-02 11:30:07,060 - batch_all.py:42 - tst - frame_all: 382
+2017-11-02 11:31:38,415 - batch_all.py:49 - tst - contour_recall: 0.913194444444
+2017-11-02 11:31:38,415 - batch_all.py:50 - tst - contour_accuracy: 0.267212599662
+2017-11-02 11:31:38,415 - batch_all.py:51 - tst - frame_recall: 0.97886292167
+2017-11-02 11:31:38,415 - batch_all.py:52 - tst - frame_average: 0.378449436044

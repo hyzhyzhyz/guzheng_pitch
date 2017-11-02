@@ -125,7 +125,7 @@ def generate(salience,allowed_pitch_distance,allowed_piths,max_ratio):
         for i in range(1,len(contour_forward)):
             contour_backward_temp.append(contour_forward[i])
         #print contour_backward_temp
-        if (len(contour_backward_temp)>5):
+        if (len(contour_backward_temp)>2):
             contour.append(contour_backward_temp)
             #print contour_backward_temp
         _position=np.argmax(salience)
@@ -151,6 +151,7 @@ def character(all_contour,salience):
     轮廓线的后续长度（因为古筝弹奏时有余音的存在，所以存在余音的更有可能是古筝基频）
     '''
     max_frame=[]##表示每一帧中salience的最大值
+    max_ratio=0.1##此处的max_ratio并不是为了轮廓线构建而用的，而是用来寻找后续长度
     salience=np.mat(salience)
     #print salience[:,16]
     raw,column=salience.shape
@@ -173,9 +174,59 @@ def character(all_contour,salience):
         for contour_frame in contour:
             mean_salience+=contour_frame[0]/max_frame[contour_frame[2]]
         contour_character_temp.append(mean_salience/len(contour))
+        len_continue=0
+        frame_iter=contour[-1][2]
+        _bin=contour[-1][1]
+        while True:
+            frame_iter+=1
+            if frame_iter>=column:
+                break
+            findnextpoint=0
+            for bin_range in range(7):
+                Binid_temp=0
+                Frameid_temp=0
+                #print frame_iter,max_frame[frame_iter],max_frame[frame_iter]*max_ratio
+                if(salience[min(599,_bin+bin_range),frame_iter]>max_frame[frame_iter]*max_ratio):
+                    #print salience[min(599,_bin+bin_range),frame_iter]
+                    Binid_temp=min(599,_bin+bin_range)
+                    Frameid_temp=frame_iter
+                    findnextpoint=1
+                else:
+                    salience[min(599,_bin+bin_range),frame_iter]=0
+                if(salience[max(0,_bin-bin_range),frame_iter]>max_frame[frame_iter]*max_ratio):
+                    #print salience[max(0,_bin-bin_range),frame_iter]
+                    if findnextpoint and salience[max(0,_bin-bin_range),frame_iter]>salience[Binid_temp,frame_iter]:
+                        Binid_temp=max(0,_bin-bin_range)
+                        Frameid_temp=frame_iter
+                        findnextpoint=1
+                    if findnextpoint==0:
+                        Binid_temp=max(0,_bin-bin_range)
+                        Frameid_temp=frame_iter
+                        findnextpoint=1
+                else:
+                    salience[max(0,_bin-bin_range),frame_iter]=0
+                if(findnextpoint):
+                    _bin=Binid_temp
+                    _frame=frame_iter
+                    break
+            if findnextpoint:
+                len_continue+=1
+            else:
+                break
+        contour_character_temp.append(len_continue)
         contour_character.append(contour_character_temp)
 
         #for contour_frame in contour:
             #print contour_frame
     return contour_character
+def filter(contour_all,contour_character,contour_lianzou,contour_chanyin):
+    '''
+    input:
+    contour_all:所有的轮廓线
+    contour_character:提取的轮廓线特征
+    contour_lianzou：轮廓线是否存在连奏属性
+    contour_chanyin：轮廓线是否存在颤音属性
+    output:
+    contour_filter_all:滤除不要的轮廓线留下的剩下的轮廓线
+    '''
     

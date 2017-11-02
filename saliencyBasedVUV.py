@@ -8,21 +8,58 @@ Description:
 import sys, csv, os
 from essentia import *
 from essentia.standard import *
-#import matplotlib
-#matplotlib.use('Agg')
-#import matplotlib.pylab    as plt
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot    as plt
 import numpy as np
 #sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), '../../../software/models/'))
 #import stft as STFT
 import _savitzky_golay as savfilt
 from scipy.signal import medfilt
+import math
+
+
+
+def My_FrameGenerator(audio, frameSize, hopSize):
+    '''
+    这是自己写的分帧代码，essentia的分帧代码有点问题
+    '''
+    frame_all=[]
+    frame_num=(len(audio)-frameSize)/hopSize+1
+    for i in range(frame_num):
+        frame_temp=audio[i*hopSize:i*hopSize+frameSize]
+        frame_all.append(frame_temp)
+    return np.asarray(frame_all)
 
 def run_pitch_salience_function_shs(peak_frequencies,peak_magnitudes):
     '''
     这是分谐波叠加的函数
     对应HPCP的函数
     '''
-def musicVocaliNonVocalic(audio, hopSize=128, frameSize=2048, sampleRate=44100):
+    alpha=(2.0**(1.0/24.0)-1)
+    s_log=np.zeros(600)
+    for fre,mag in zip(peak_frequencies,peak_magnitudes):
+        Harmonic=[]
+        for i in range(1,11):
+            Harmonic.append(fre*i)
+        temp_energy=0
+        for index,harmonic_iter in enumerate(Harmonic):
+            diff=abs(np.array(peak_frequencies)-harmonic_iter)
+            min_diff=min(diff)
+            if min_diff<alpha*harmonic_iter:
+                index_mag=np.where(diff==min_diff)[0]
+                index_mag=index_mag.tolist()[0]
+                mag_harmonic=peak_magnitudes[index_mag]
+                temp_energy+=0.8**(index)*mag_harmonic
+        if fre>=55 and fre<=1760  and temp_energy>0.0:
+            temp_bin=round(120*math.log(fre/55.0,2))-1
+            s_log[int(temp_bin)]=temp_energy
+    return essentia.array(s_log)
+
+
+
+
+def musicVocaliNonVocalic(audio, hopSize=128, frameSize=2048, sampleRate=44100, debug=False):
     #filename = '../segwav/3harmonicComp.wav'
     #hopSize = 128
     #frameSize = 2048
@@ -39,22 +76,32 @@ def musicVocaliNonVocalic(audio, hopSize=128, frameSize=2048, sampleRate=44100):
                                    magnitudeThreshold=0,
                                    orderBy="magnitude")
     run_pitch_salience_function = PitchSalienceFunction(magnitudeThreshold=60)
-    run_pitch_salience_function_peaks = PitchSalienceFunctionPeaks(minFrequency=90, maxFrequency=800)
+    run_pitch_salience_function_peaks = PitchSalienceFunctionPeaks(minFrequency=55, maxFrequency=1760)
 #    run_pitch_contours = PitchContours(hopSize=hopSize, peakFrameThreshold=0.7)
 #    run_pitch_contours_melody = PitchContoursMelody(guessUnvoiced=guessUnvoiced,
 #                                                hopSize=hopSize)
     pool = Pool();
     #audio = MonoLoader(filename = filename)()
     #audio = EqualLoudness()(audio)
-    
-    for frame in FrameGenerator(audio, frameSize=frameSize, hopSize=hopSize):
+    i=1
+    for frame in My_FrameGenerator(audio, frameSize=frameSize, hopSize=hopSize):
+    #for frame in FrameGenerator(audio, frameSize=frameSize, hopSize=hopSize):
+        #print type(frame)
         frame = run_windowing(frame)
         spectrum = run_spectrum(frame)
         specGram = pool.add('allframe_spectrum', spectrum);
         peak_frequencies, peak_magnitudes = run_spectral_peaks(spectrum)
-        salience = run_pitch_salience_function(peak_frequencies, peak_magnitudes)
+        salience = run_pitch_salience_function_shs(peak_frequencies, peak_magnitudes)
+        #salience = run_pitch_salience_function(peak_frequencies, peak_magnitudes)
         Salience_fin=pool.add('allframe_salience',salience);
         salience_peaks_bins, salience_peaks_saliences = run_pitch_salience_function_peaks(salience)
+        if debug and len(salience_peaks_saliences)>0:
+            #print salience_peaks_saliences
+            salience_max=max(salience_peaks_saliences)
+            for fre, sal in zip( salience_peaks_bins, salience_peaks_saliences):
+                if sal>salience_max*0.4:
+                    plt.scatter(i,fre)
+
         #print salience_peaks_bins
         salience_peak_temp=np.zeros([600,1])
         for _bin,_peak in zip(salience_peaks_bins,salience_peaks_saliences):
@@ -65,7 +112,11 @@ def musicVocaliNonVocalic(audio, hopSize=128, frameSize=2048, sampleRate=44100):
             Salience_peaks=np.column_stack((Salience_peaks,salience_peak_temp))
         salSum = np.sum(np.power(salience_peaks_saliences, 2))
         pool.add('salienceSum', salSum)
-        
+        i+=1
+    if debug:
+        plt.savefig('fre_peak.jpg')
+        plt.close()
+        #print 'frame_num',FrameGenerator(audio, frameSize=frameSize, hopSize=hopSize).num_frames()
     specGram = pool['allframe_spectrum']
     Salience_fin=pool['allframe_salience']
     totalSalienceEnrg = pool['salienceSum']     
@@ -74,6 +125,17 @@ def musicVocaliNonVocalic(audio, hopSize=128, frameSize=2048, sampleRate=44100):
     audioTime = np.arange(np.size(audio))/float(sampleRate)
     
     #plt.figure()
+    #plt.plot(timeAxis, totalSalienceEnrg)    
+    #plt.plot(audioTime, audio)
+    
+    totalSalienceEnrg = medfilt(totalSalienceEnrg, 3)
+    totalSalienceEnrg = savfilt.savgol_filter(totalSalienceEnrg, 31, 3)     
+    #plt.plot(totalSalienceEnrg)
+    
+    # Divide the signal into vocal and non-vocal regions
+    delta = 0.9
+    meanSalience = np.mean(totalSalienceEnrg)
+    stdSalience = np.std(totalSalienceEnrg) * delta
     #plt.plot(timeAxis, totalSalienceEnrg)    
     #plt.plot(audioTime, audio)
     
@@ -144,45 +206,37 @@ def musicVocaliNonVocalic(audio, hopSize=128, frameSize=2048, sampleRate=44100):
     tempVocalUnitStep = np.ones(np.size(vocalEnd)) * 0.4      # Vocal region markers
     
     thresholdCurve = np.ones(np.size(totalSalienceEnrg)) * thresh
+    return specGram,Salience_peaks, vocalBeg, vocalEnd, totalSalienceEnrg
+
     '''
     plt.figure()
     plt.plot(audioTime, audio)
     plt.plot(timeAxis, totalSalienceEnrg)
-    plt.plot(timeAxis, thresholdCurve, 'm')    
-    plt.stem(vocalBeg, tempVocalUnitStep, 'g')
-    plt.stem(vocalEnd, tempVocalUnitStep, 'r')
-    plt.savefig('test1.jpg')
+            pool['allframes_salience_peaks_bins'],
+            pool['allframes_salience_peaks_saliences'])
+    pitch, confidence = run_pitch_contours_melody(contours_bins,
+                                                  contours_saliences,
+                                                  contours_start_times,
+                                                  duration)
+    
+    figure(1, figsize=(9, 6))
+    
+    mX, pX = STFT.stftAnal(audio, sampleRate, hamming(frameSize), frameSize, hopSize)
+    maxplotfreq = 3000.0
+    numFrames = int(mX[:,0].size)
+    frmTime = hopSize*arange(numFrames)/float(sampleRate)                             
+    binFreq = sampleRate*arange(frameSize*maxplotfreq/sampleRate)/frameSize                       
+    plt.pcolormesh(frmTime, binFreq, np.transpose(mX[:,:frameSize*maxplotfreq/sampleRate+1]))
+    plt.autoscale(tight=True)
+    
+    offset = .5 * frameSize/sampleRate
+    for i in range(len(contours_bins)):
+      time = contours_start_times[i] - offset + hopSize*arange(size(contours_bins[i]))/float(sampleRate)
+      contours_freq = 55.0 * pow(2, array(contours_bins[i]) * 10 / 1200.0)
+      plot(time,contours_freq, color='k', linewidth = 2)
+    
+    plt.title('mX + F0 trajectories (carnatic.wav)')
+    tight_layout()
+    savefig('predominantmelody.png')
+    show()
     '''
-    return specGram,Salience_peaks, vocalBeg, vocalEnd, totalSalienceEnrg    
-    #    
-    #    pool.add('allframes_salience_peaks_bins', salience_peaks_bins)
-    #    pool.add('allframes_salience_peaks_saliences', salience_peaks_saliences)
-    #
-    #contours_bins, contours_saliences, contours_start_times, duration = run_pitch_contours(
-    #        pool['allframes_salience_peaks_bins'],
-    #        pool['allframes_salience_peaks_saliences'])
-    #pitch, confidence = run_pitch_contours_melody(contours_bins,
-    #                                              contours_saliences,
-    #                                              contours_start_times,
-    #                                              duration)
-    #
-    #figure(1, figsize=(9, 6))
-    #
-    #mX, pX = STFT.stftAnal(audio, sampleRate, hamming(frameSize), frameSize, hopSize)
-    #maxplotfreq = 3000.0
-    #numFrames = int(mX[:,0].size)
-    #frmTime = hopSize*arange(numFrames)/float(sampleRate)                             
-    #binFreq = sampleRate*arange(frameSize*maxplotfreq/sampleRate)/frameSize                       
-    #plt.pcolormesh(frmTime, binFreq, np.transpose(mX[:,:frameSize*maxplotfreq/sampleRate+1]))
-    #plt.autoscale(tight=True)
-    #
-    #offset = .5 * frameSize/sampleRate
-    #for i in range(len(contours_bins)):
-    #  time = contours_start_times[i] - offset + hopSize*arange(size(contours_bins[i]))/float(sampleRate)
-    #  contours_freq = 55.0 * pow(2, array(contours_bins[i]) * 10 / 1200.0)
-    #  plot(time,contours_freq, color='k', linewidth = 2)
-    #
-    #plt.title('mX + F0 trajectories (carnatic.wav)')
-    #tight_layout()
-    #savefig('predominantmelody.png')
-    #show()
